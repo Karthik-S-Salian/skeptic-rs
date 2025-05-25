@@ -1,0 +1,9 @@
+[package]
+name = "skeptic-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytecount = "0.6.8"
+glob = "0.3.2"
+pulldown-cmark = "0.13.0"
