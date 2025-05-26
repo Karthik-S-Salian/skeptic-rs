@@ -1,16 +1,18 @@
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
+use run::run_tests;
 use std::env;
 use std::fs::File;
 use std::io::{Error as IoError, Read};
 use std::mem;
 use std::path::{Path, PathBuf};
+mod run;
 
 struct Config {
     root_dir: PathBuf,
-    tests: Vec<Test>,
+    test_dir: PathBuf,
 }
 
-pub fn test_snippets_in_dir(dir: &str) {
+pub fn test_snippets_in_dir(dir: &str, test_dir: Option<&str>) {
     let files = markdown_files_of_directory(dir);
 
     if files.is_empty() {
@@ -31,7 +33,14 @@ pub fn test_snippets_in_dir(dir: &str) {
 
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    let config = Config { root_dir, tests };
+    let test_dir_path = root_dir.join(test_dir.unwrap_or("skeptic_test"));
+
+    let config = Config {
+        root_dir,
+        test_dir: test_dir_path,
+    };
+
+    run_tests(&config, tests)
 }
 
 pub fn markdown_files_of_directory(dir: &str) -> Vec<PathBuf> {
@@ -112,7 +121,11 @@ fn extract_tests_from_string(s: &str, file_stem: &str) -> Vec<Test> {
                     if buf.is_empty() {
                         code_block_start = line_number;
                     }
-                    buf.extend(text.lines().map(|s| format!("{}\n", s)));
+                    buf.extend(
+                        text.lines()
+                            .filter_map(clean_code_line) // <- Only keep meaningful lines
+                            .map(|s| format!("{}", s)),
+                    );
                 } else if let Buffer::Heading(ref mut buf) = buffer {
                     buf.push_str(&text);
                 }
@@ -208,4 +221,15 @@ fn parse_code_block_info(info: &str) -> CodeBlockInfo {
     info.is_rust &= !seen_other_tags || seen_rust_tags;
 
     info
+}
+
+fn clean_code_line(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+
+    if let Some(rest) = trimmed.strip_prefix("# ") {
+        return Some(rest);
+    } else if trimmed == "#" || trimmed.is_empty() {
+        return None;
+    }
+    return Some(trimmed);
 }

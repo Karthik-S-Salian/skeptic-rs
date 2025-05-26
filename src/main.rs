@@ -1,9 +1,5 @@
-use skeptic_rs::markdown_files_of_directory;
+use skeptic_rs::test_snippets_in_dir;
 
 pub fn main() {
-    let paths = markdown_files_of_directory("./book");
-
-    // for path in &paths {
-    //     extract_tests_from_file(path);
-    // }
+    test_snippets_in_dir("book", Some("mktest"));
 }
