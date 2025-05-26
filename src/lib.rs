@@ -10,9 +10,10 @@ mod run;
 struct Config {
     root_dir: PathBuf,
     test_dir: PathBuf,
+    cargo_toml_path: PathBuf,
 }
 
-pub fn test_snippets_in_dir(dir: &str, test_dir: Option<&str>) {
+pub fn test_snippets_in_dir(dir: &str, cargo_toml_path: &str, test_dir: Option<&str>) {
     let files = markdown_files_of_directory(dir);
 
     if files.is_empty() {
@@ -36,6 +37,7 @@ pub fn test_snippets_in_dir(dir: &str, test_dir: Option<&str>) {
     let test_dir_path = root_dir.join(test_dir.unwrap_or("skeptic_test"));
 
     let config = Config {
+        cargo_toml_path: PathBuf::from(cargo_toml_path),
         root_dir,
         test_dir: test_dir_path,
     };
@@ -68,18 +70,36 @@ fn extract_tests_from_file(path: &Path) -> Result<Vec<Test>, IoError> {
     let s = &mut String::new();
     file.read_to_string(s)?;
 
-    let file_stem = &sanitize_test_name(path.to_str().unwrap());
-
-    Ok(extract_tests_from_string(s, file_stem))
+    Ok(extract_tests_from_string(s, path.to_str().unwrap()))
 }
 
 #[derive(Debug)]
 struct Test {
-    name: String,
     text: Vec<String>,
+    path: PathBuf,
+    section: Option<String>,
+    line_number: usize,
     ignore: bool,
     no_run: bool,
     should_panic: bool,
+}
+
+impl Test {
+    pub fn name(&self) -> String {
+        let file_stem = self
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+
+        let mut name = format!("{}_line_{}", file_stem, self.line_number);
+
+        if let Some(ref section) = self.section {
+            name = format!("{}_sect_{}", name, section);
+        }
+
+        name
+    }
 }
 
 enum Buffer {
@@ -106,7 +126,7 @@ fn extract_tests_from_string(s: &str, file_stem: &str) -> Vec<Test> {
             Event::End(TagEnd::Heading(level)) if level < HeadingLevel::H3 => {
                 let cur_buffer = mem::replace(&mut buffer, Buffer::None);
                 if let Buffer::Heading(sect) = cur_buffer {
-                    section = Some(sanitize_test_name(&sect));
+                    section = Some(sect);
                 }
             }
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref info))) => {
@@ -135,17 +155,13 @@ fn extract_tests_from_string(s: &str, file_stem: &str) -> Vec<Test> {
                     continue;
                 }
                 if let Buffer::Code(buf) = mem::replace(&mut buffer, Buffer::None) {
-                    let name = if let Some(ref section) = section {
-                        format!("{}_sect_{}_line_{}", file_stem, section, code_block_start)
-                    } else {
-                        format!("{}_line_{}", file_stem, code_block_start)
-                    };
-
                     let info = current_code_block_info.take().unwrap();
 
                     tests.push(Test {
-                        name,
                         text: buf,
+                        path: file_stem.into(),
+                        section: section.clone(),
+                        line_number: code_block_start,
                         ignore: info.ignore,
                         no_run: info.no_run,
                         should_panic: info.should_panic,
@@ -156,24 +172,6 @@ fn extract_tests_from_string(s: &str, file_stem: &str) -> Vec<Test> {
         }
     }
     tests
-}
-
-fn sanitize_test_name(s: &str) -> String {
-    s[..s.len() - 3]
-        .to_ascii_lowercase()
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii() && ch.is_alphanumeric() {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>()
-        .split('_')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("_")
 }
 
 struct CodeBlockInfo {

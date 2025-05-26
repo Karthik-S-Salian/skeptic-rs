@@ -6,15 +6,14 @@ use std::process::Command;
 
 fn initialize_test(config: &Config) -> (PathBuf, PathBuf) {
     let test_dir = &config.test_dir;
-    
+
     let src_dir = test_dir.join("src");
     let main_file = src_dir.join("main.rs");
 
     create_dir_all(&src_dir).unwrap();
 
-    let cargo_toml_src = &config.root_dir.join("Cargo.toml");
     let cargo_toml_dst = test_dir.join("Cargo.toml");
-    copy(&cargo_toml_src, &cargo_toml_dst).unwrap();
+    copy(&config.cargo_toml_path, &cargo_toml_dst).unwrap();
 
     (test_dir.to_path_buf(), main_file)
 }
@@ -27,12 +26,11 @@ pub fn run_tests(config: &Config, tests: Vec<Test>) {
     //     .map(|test| run_test(&test_dir, &main_file, test))
     //     .collect::<Vec<_>>();
 
-
     let mut results = Vec::with_capacity(tests.len());
 
     for test in &tests {
         let status = run_test(&test_dir, &main_file, test);
-        println!("{} {}", test.name, status_print(&status));
+        println!("{} {}", test.name(), status_print(&status));
         results.push(status);
     }
 
@@ -84,14 +82,12 @@ fn status_print(status: &TestStatus) -> impl Display {
 
 fn run_test(test_dir: &Path, main_file: &Path, test: &Test) -> TestStatus {
     if test.ignore {
-        println!("Ignoring test: {}", test.name);
         return TestStatus::Ignored;
     }
 
     write(main_file, test.text.join("\n")).unwrap();
 
     if test.no_run {
-        println!("Checking (no_run): {}", test.name);
         let status = Command::new("cargo")
             .arg("check")
             .current_dir(test_dir)
@@ -99,7 +95,7 @@ fn run_test(test_dir: &Path, main_file: &Path, test: &Test) -> TestStatus {
             .expect("Failed to run cargo check");
 
         if !status.success() {
-            eprintln!("(no_run) test {} failed to compile.", test.name);
+            eprintln!("(no_run) test {} failed to compile.", test.name());
             return TestStatus::Failed;
         }
         return TestStatus::Passed;
@@ -117,7 +113,7 @@ fn run_test(test_dir: &Path, main_file: &Path, test: &Test) -> TestStatus {
 
     if test.should_panic {
         if success {
-            println!("Test '{}' was expected to panic but passed.", test.name);
+            eprintln!("Test was expected to panic but passed.");
             return TestStatus::Failed;
         } else {
             return TestStatus::Passed;
@@ -125,8 +121,10 @@ fn run_test(test_dir: &Path, main_file: &Path, test: &Test) -> TestStatus {
     } else {
         if !success {
             eprintln!(
-                "Test '{}' failed.\nstdout:\n{}\nstderr:\n{}",
-                test.name, stdout, stderr
+                "Test {} failed.\nstdout:\n{}\nstderr:\n{}",
+                test.name(),
+                stdout,
+                stderr
             );
             return TestStatus::Failed;
         } else {
