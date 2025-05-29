@@ -1,5 +1,5 @@
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
-use run::run_tests;
+use run::{TestStatus, run_tests};
 use std::env;
 use std::fs::File;
 use std::io::{Error as IoError, Read};
@@ -13,27 +13,52 @@ struct Config {
     cargo_toml_path: PathBuf,
 }
 
-pub fn test_snippets_in_dir(dir: &str, cargo_toml_path: &str, test_dir: Option<&str>) {
+/// Tests Markdown snippets in a directory.
+///
+/// This function takes three parameters:
+///
+/// * `dir`: The path to the directory containing the Markdown files to test.
+/// * `cargo_toml_path`: The path to the `Cargo.toml` file for the project being tested.
+/// * `test_dir`: An optional parameter specifying the test directory (default is the current working directory).
+///
+/// The function returns a vector of `TestStatus` values, where each status corresponds to a Markdown file in the directory.
+///
+/// Example usage:
+/// ```rust
+/// let test_statuses = test_snippets_in_dir("path/to/markdown/files", "Cargo.toml", Some("test/directory"));
+/// ```
+pub fn test_snippets_in_dir(
+    dir: &str,
+    cargo_toml_path: &str,
+    test_dir: Option<&str>,
+) -> Vec<TestStatus> {
     let files = markdown_files_of_directory(dir);
+    test_snippets_in_files(cargo_toml_path, &files, test_dir)
+}
 
+pub fn test_snippets_in_files(
+    cargo_toml_path: &str,
+    files: &[PathBuf],
+    test_dir: Option<&str>,
+) -> Vec<TestStatus> {
     if files.is_empty() {
-        return;
+        return vec![];
     }
 
-    // Inform cargo that it needs to rerun the build script if one of the skeptic files are
-    // modified
-    for doc in &files {
-        println!("cargo:rerun-if-changed={}", doc.to_string_lossy());
+    for file in files {
+        println!("cargo:rerun-if-changed={}", file.to_string_lossy());
     }
 
-    let tests = files
+    let tests: Vec<Test> = files
         .iter()
-        .map(|path| extract_tests_from_file(path).unwrap())
-        .flatten()
-        .collect::<Vec<_>>();
+        .flat_map(|path| extract_tests_from_file(path).unwrap_or_default())
+        .collect();
+
+    if tests.is_empty() {
+        return vec![];
+    }
 
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-
     let test_dir_path = root_dir.join(test_dir.unwrap_or("skeptic_test"));
 
     let config = Config {

@@ -18,7 +18,7 @@ fn initialize_test(config: &Config) -> (PathBuf, PathBuf) {
     (test_dir.to_path_buf(), main_file)
 }
 
-pub fn run_tests(config: &Config, tests: Vec<Test>) {
+pub fn run_tests(config: &Config, tests: Vec<Test>) -> Vec<TestStatus> {
     let (test_dir, main_file) = initialize_test(config);
 
     // let test_results = tests
@@ -43,9 +43,10 @@ pub fn run_tests(config: &Config, tests: Vec<Test>) {
     }
 
     print_test_stats(&results);
+    results
 }
 
-enum TestStatus {
+pub enum TestStatus {
     Ignored,
     Passed,
     Failed,
